@@ -8,10 +8,12 @@
 
 This repo contains experimental methods to infer the time-varying
 fraction of Australian COVID-19 cases that receive a positive test
-result. Previous work attempted to estimate this from daily deaths and
-an assumption about the infeciton fatiility rate. Tjis repository aims
-to make inferences based on survey data relating to test seeking
-behaviour, and recorded reasons for test seeking.
+result. [Previous
+work](https://github.com/goldingn/australia_covid_ascertainment) from
+way back at the start of the pandemic attempted to estimate this from
+daily deaths and an assumption about the infection fatality rate. This
+repository aims to make inferences based on survey data relating to test
+seeking behaviour, and recorded reasons for test seeking.
 
-The methods are currently in early development and undergoing testinig
+The methods are currently in early development and undergoing testing
 with synthetic data.
