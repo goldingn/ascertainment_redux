@@ -12,20 +12,25 @@
 #' @author Nick Golding
 #' @export
 predict_ascertainment <- function(
-  close_contact_test_prob,
-  symptomatic_test_prob,
-  screening_test_prob,
+  contact_fraction,
+  contact_test_prob,
   symptomatic_fraction,
-  close_contact_fraction
+  symptomatic_test_prob,
+  screenable_fraction,
+  screening_test_prob
 ) {
   
   output <- mapply(
     FUN = predict_ascertainment_once,
-    close_contact_test_prob = close_contact_test_prob,
-    symptomatic_test_prob = symptomatic_test_prob,
-    screening_test_prob = screening_test_prob,
+    contact_fraction = contact_fraction,
+    contact_test_prob = contact_test_prob,
     symptomatic_fraction = symptomatic_fraction,
-    close_contact_fraction = close_contact_fraction
+    symptomatic_test_prob = symptomatic_test_prob,
+    screenable_fraction = screenable_fraction,
+    screening_test_prob = screening_test_prob
   )
+  
+  t(output) %>%
+    as_tibble()
   
 }
