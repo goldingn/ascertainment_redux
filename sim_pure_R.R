@@ -7,18 +7,11 @@ data <- sim_parameters()
 # calculate ascertainment according to the model
 predictions <- calculate_ascertainment_r(data)
 
-combined_plot <- plot_data(data) +
-  plot_reason_for_test(predictions) +
-  plot_ascertainment(predictions) +
-  plot_layout(
-    guides = "collect"
-  ) &
-  theme(
-    legend.position = "bottom"
-  )
+# plot
+combined_plot <- plot_all(data, predictions)
 
 ggsave(
-  "figures/ascertainment_sim.png",
+  "figures/ascertainment_sim_r.png",
   plot = combined_plot,
   bg = "white",
   width = 12,
