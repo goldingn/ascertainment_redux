@@ -1,4 +1,5 @@
 library(greta)
 library(greta.dynamics)
+library(greta.gp)
 library(tidyverse)
 library(patchwork)

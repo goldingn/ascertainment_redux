@@ -25,14 +25,22 @@ params_data <- params_all %>%
     date %in% reason_test_count_data$date
   )
 
-# define the contact fraction as an unknown variable - logit-linear model on date
+# define the contact fraction as an unknown variable - logit model on date
+
+# define a transformation on dates to help with starting values and priors
 start_date <- min(params_data$date)
 date_num <- as.numeric(params_data$date - start_date)
 date_scaling <- max(date_num)
 date_num <- date_num / date_scaling
-contact_fraction_intercept <- normal(0, 1)
-contact_fraction_slope <- normal(0, 1)
-logit_contact_fraction <- contact_fraction_intercept + contact_fraction_slope * date_num
+
+# Gaussian process hyperparameters
+kernel_sd <- normal(0, 1, truncation = c(0, Inf))
+kernel_variance <- kernel_sd ^ 2
+kernel_lengthscale <- lognormal(0, 1)
+
+# define logit-gp over date
+kernel <- bias(1) + mat52(lengthscales = kernel_lengthscale, variance = kernel_variance) 
+logit_contact_fraction <- gp(date_num, kernel = kernel)
 contact_fraction <- ilogit(logit_contact_fraction)
 
 expected_fractions <- calculate_expected_fractions(
@@ -61,16 +69,19 @@ distribution(observed_reason_counts) <- multinomial(
 
 
 # define and fit model
-m <- model(contact_fraction_intercept, contact_fraction_slope)
+m <- model(kernel_sd, kernel_lengthscale)
 draws <- mcmc(m)
 
 
 plot(draws)
 
+# check convergence of the GP latent parameters too
+plot(calculate(logit_contact_fraction, values = draws))
+
 
 # use these to predict contact_fraction and ascertainment over time
 date_num_predict <- as.numeric(params_all$date - start_date) / date_scaling
-logit_contact_fraction_predict <- contact_fraction_intercept + contact_fraction_slope * date_num_predict
+logit_contact_fraction_predict <- project(logit_contact_fraction, date_num_predict)
 contact_fraction_predict <- ilogit(logit_contact_fraction_predict)
 
 expected_fractions_predict <- calculate_expected_fractions(
@@ -94,15 +105,9 @@ predict_sims <- calculate(
 
 contact_fraction_predict_mean <- colMeans(predict_sims$contact_fraction_predict)[, 1]
 contact_fraction_predict_cis <- apply(predict_sims$contact_fraction_predict, 2, quantile, c(0.025, 0.975))
-# plot(contact_fraction_predict_mean ~ params_all$date, type = "l", ylim = c(0, 1))
-# lines(contact_fraction_predict_cis[1, ] ~ params_all$date, lty = 2)
-# lines(contact_fraction_predict_cis[2, ] ~ params_all$date, lty = 2)
 
 ascertainment_predict_mean <- colMeans(predict_sims$ascertainment_predict)[, 1]
 ascertainment_predict_cis <- apply(predict_sims$ascertainment_predict, 2, quantile, c(0.025, 0.975))
-# plot(ascertainment_predict_mean ~ params_all$date, type = "l", ylim = c(0, 1))
-# lines(ascertainment_predict_cis[1, ] ~ params_all$date, lty = 2)
-# lines(ascertainment_predict_cis[2, ] ~ params_all$date, lty = 2)
 
 predictions <- tibble(
     date = params_all$date,
