@@ -6,47 +6,57 @@ set.seed(2)
 # simulate fake parameters
 data <- sim_parameters()
 
-# simulate fake reason_for_test counts over time, with these parameters
-reason_test_count_data <- sim_reason_for_test_data(data, sample_size = 200, days_between_surveys = 7)
+# get true ascertainment
+truth <- calculate_ascertainment_r(data)
 
-# extract required parameters
-params <- data %>%
+# extract required parameters for full timeseries
+params_all <- data %>%
   pivot_wider(
     names_from = parameter,
     values_from = value
   )
 
+# simulate fake reason_for_test counts over time, with these parameters
+reason_test_count_data <- sim_reason_for_test_data(data, sample_size = 200, days_between_surveys = 7)
+
+# get parameters for this subset of data
+params_data <- params_all %>%
+  filter(
+    date %in% reason_test_count_data$date
+  )
+
 # define the contact fraction as an unknown variable - logit-linear model on date
-date_num <- as.numeric(params$date - min(params$date))
+start_date <- min(params_data$date)
+date_num <- as.numeric(params_data$date - start_date)
+date_scaling <- max(date_num)
+date_num <- date_num / date_scaling
 contact_fraction_intercept <- normal(0, 1)
 contact_fraction_slope <- normal(0, 1)
 logit_contact_fraction <- contact_fraction_intercept + contact_fraction_slope * date_num
 contact_fraction <- ilogit(logit_contact_fraction)
 
-
 expected_fractions <- calculate_expected_fractions(
   contact_fraction = contact_fraction,
-  contact_test_prob = params$contact_test_prob,
-  symptomatic_fraction = params$symptomatic_fraction,
-  symptomatic_test_prob = params$symptomatic_test_prob,
-  screenable_fraction = params$screenable_fraction,
-  screening_test_prob = params$screening_test_prob
+  contact_test_prob = params_data$contact_test_prob,
+  symptomatic_fraction = params_data$symptomatic_fraction,
+  symptomatic_test_prob = params_data$symptomatic_test_prob,
+  screenable_fraction = params_data$screenable_fraction,
+  screening_test_prob = params_data$screening_test_prob
 )
 
 ascertainment <- expected_fractions$ascertainment
 reason_test_fraction <- expected_fractions$reason_test_fraction
 
 # pull out the modelled reason for test fractions corresponding to the data
-idx <- match(reason_test_count_data$date, params$date)
 observed_reason_counts <- reason_test_count_data %>%
   select(
     -date
   ) %>%
-  as_data()
+  as.matrix()
 
 distribution(observed_reason_counts) <- multinomial(
   size = rowSums(observed_reason_counts),
-  prob = reason_test_fraction[idx, ]
+  prob = reason_test_fraction
 )
 
 
@@ -58,33 +68,113 @@ draws <- mcmc(m)
 plot(draws)
 
 
+# use these to predict contact_fraction and ascertainment over time
+date_num_predict <- as.numeric(params_all$date - start_date) / date_scaling
+logit_contact_fraction_predict <- contact_fraction_intercept + contact_fraction_slope * date_num_predict
+contact_fraction_predict <- ilogit(logit_contact_fraction_predict)
+
+expected_fractions_predict <- calculate_expected_fractions(
+  contact_fraction = contact_fraction_predict,
+  contact_test_prob = params_all$contact_test_prob,
+  symptomatic_fraction = params_all$symptomatic_fraction,
+  symptomatic_test_prob = params_all$symptomatic_test_prob,
+  screenable_fraction = params_all$screenable_fraction,
+  screening_test_prob = params_all$screening_test_prob
+)
+
+ascertainment_predict <- expected_fractions_predict$ascertainment
+
 # compute posterior means and CIs of ascertainment and key parameter
+predict_sims <- calculate(
+  contact_fraction_predict,
+  ascertainment_predict,
+  values = draws,
+  nsim = 1000
+)
 
-# use only data dates when fitting, then predict post-hoc
+contact_fraction_predict_mean <- colMeans(predict_sims$contact_fraction_predict)[, 1]
+contact_fraction_predict_cis <- apply(predict_sims$contact_fraction_predict, 2, quantile, c(0.025, 0.975))
+# plot(contact_fraction_predict_mean ~ params_all$date, type = "l", ylim = c(0, 1))
+# lines(contact_fraction_predict_cis[1, ] ~ params_all$date, lty = 2)
+# lines(contact_fraction_predict_cis[2, ] ~ params_all$date, lty = 2)
 
+ascertainment_predict_mean <- colMeans(predict_sims$ascertainment_predict)[, 1]
+ascertainment_predict_cis <- apply(predict_sims$ascertainment_predict, 2, quantile, c(0.025, 0.975))
+# plot(ascertainment_predict_mean ~ params_all$date, type = "l", ylim = c(0, 1))
+# lines(ascertainment_predict_cis[1, ] ~ params_all$date, lty = 2)
+# lines(ascertainment_predict_cis[2, ] ~ params_all$date, lty = 2)
 
-
-# get output from greta model to confirm it matches
-
-estimates <- calculate(ascertainment, reason_test_fraction)
-
-predictions <- estimates$reason_test_fraction %>%
-  as_tibble() %>%
-  setNames(
-    paste0("fraction_tested_", c("contact", "symptoms", "screening"))
-  ) %>%
-  mutate(
-    date = params$date,
-    ascertainment = estimates$ascertainment[, 1],
-    .before = everything()
+predictions <- tibble(
+    date = params_all$date,
+    ascertainment = ascertainment_predict_mean,
+    ascertainment_low = ascertainment_predict_cis[1, ],
+    ascertainment_high = ascertainment_predict_cis[2, ],
+    contact_fraction = contact_fraction_predict_mean,
+    contact_fraction_low = contact_fraction_predict_cis[1, ],
+    contact_fraction_high = contact_fraction_predict_cis[2, ]
   )
 
-combined_plot <- plot_all(data, predictions)
+contact_fraction_plot <- predictions %>%
+  ggplot(
+    aes(
+      x = date,
+      y = contact_fraction
+    )
+  ) +
+  geom_line(
+    data = params_all,
+    linetype = 2
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = contact_fraction_high,
+      ymin = contact_fraction_low
+    ),
+    alpha = 0.3
+  ) +
+  geom_line() +
+  theme_minimal() +
+  coord_cartesian(
+    ylim = c(0, 1)
+  ) +
+  ggtitle(
+    "contact_fraction estimate"
+  )
+
+
+ascertainment_plot <- predictions %>%
+  ggplot(
+    aes(
+      x = date,
+      y = ascertainment
+    )
+  ) +
+  geom_line(
+    data = truth,
+    linetype = 2
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = ascertainment_high,
+      ymin = ascertainment_low
+    ),
+    alpha = 0.3
+  ) +
+  geom_line() +
+  theme_minimal() +
+  coord_cartesian(
+    ylim = c(0, 1)
+  ) +
+  ggtitle(
+    "Ascertainment estimate"
+  )
+
+fit_plot <- ascertainment_plot +  contact_fraction_plot
 
 ggsave(
-  "figures/ascertainment_sim_greta.png",
-  plot = combined_plot,
+  "figures/estimate_greta.png",
+  plot = fit_plot,
   bg = "white",
-  width = 12,
+  width = 10,
   height = 5
 )
