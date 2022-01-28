@@ -33,8 +33,8 @@ params_all <- data %>%
   ) %>%
   mutate(
     # make some of these parameters biased, to re-estimate them in the model
-    p_detected_symptoms_biased = plogis(qlogis(p_detected_symptoms) - 1),
-    p_detected_screening_biased = plogis(qlogis(p_detected_screening) - 1)
+    p_detected_symptoms_biased = plogis(qlogis(p_detected_symptoms) - 0),
+    p_detected_screening_biased = plogis(qlogis(p_detected_screening) - 0)
   ) %>%
   select(
     date,
@@ -61,21 +61,26 @@ date_num <- as.numeric(params_data$date - start_date)
 date_scaling <- max(date_num)
 date_num <- date_num / date_scaling
 
-# Gaussian process hyperparameters - reuse these for all GPs
-kernel_sd <- normal(0, 1, truncation = c(0, Inf))
-kernel_variance <- kernel_sd ^ 2
-kernel_lengthscale <- lognormal(0, 1)
-kernel <- bias(1) + mat52(lengthscales = kernel_lengthscale, variance = kernel_variance) 
+# Gaussian process hyperparameters - reuse these for several GPs
+kernel_sd_contact <- normal(0, 1, truncation = c(0, Inf))
+kernel_variance_contact <- kernel_sd_contact ^ 2
+kernel_lengthscale_contact <- lognormal(0, 1)
+kernel_contact <- bias(1) + mat52(lengthscales = kernel_lengthscale_contact, variance = kernel_variance_contact) 
+
+kernel_sd_symp_screen <- normal(0, 1, truncation = c(0, Inf))
+kernel_variance_symp_screen <- kernel_sd_symp_screen ^ 2
+kernel_lengthscale_symp_screen <- lognormal(0, 1)
+kernel_symp_screen <- bias(1) + mat52(lengthscales = kernel_lengthscale_symp_screen, variance = kernel_variance_symp_screen) 
 
 # define logit-gp over date for probability of detection via contact
-logit_p_detected_contact <- gp(date_num, kernel = kernel)
+logit_p_detected_contact <- gp(date_num, kernel = kernel_contact)
 p_detected_contact <- ilogit(logit_p_detected_contact)
 
 # define a logit-gp over date for probability of detection via symptomatic
 # testing, using a biased estimate as the prior mean on the logit scale
 
 # the temporally-varying bias and error term
-logit_p_detected_symptoms_error <- gp(date_num, kernel = kernel)
+logit_p_detected_symptoms_error <- gp(date_num, kernel = kernel_symp_screen)
 # the prior mean (transform estimate to logit scale)
 logit_p_detected_symptoms_prior <- qlogis(params_data$p_detected_symptoms_biased)
 # combine these to get the logit estimate, and transform to probability scale
@@ -87,7 +92,7 @@ p_detected_symptoms <- ilogit(logit_p_detected_symptoms)
 # using a biased estimate as the prior mean on the logit scale
 
 # the temporally-varying bias and error term
-logit_p_detected_screening_error <- gp(date_num, kernel = kernel)
+logit_p_detected_screening_error <- gp(date_num, kernel = kernel_symp_screen)
 # the prior mean (transform estimate to logit scale)
 logit_p_detected_screening_prior <- qlogis(params_data$p_detected_screening_biased)
 # combine these to get the logit estimate, and transform to probability scale
@@ -117,7 +122,7 @@ distribution(observed_reason_counts) <- multinomial(
 
 
 # define and fit model
-m <- model(kernel_sd, kernel_lengthscale)
+m <- model(kernel_sd_contact, kernel_sd_symp_screen, kernel_lengthscale_contact, kernel_lengthscale_symp_screen)
 draws <- mcmc(m)
 
 
@@ -330,6 +335,6 @@ ggsave(
   "figures/estimate_greta.png",
   plot = fit_plot,
   bg = "white",
-  width = 14,
-  height = 5
+  width = 12,
+  height = 10
 )
