@@ -12,7 +12,7 @@ truth <- calculate_ascertainment_r(data)
 # simulate reason_for_test counts over time, with these parameters
 reason_test_count_data <- sim_reason_for_test_data(
   data = data,
-  sample_size = 200,
+  sample_size = 2000,
   days_between_surveys = 7
 )
 
@@ -33,8 +33,8 @@ params_all <- data %>%
   ) %>%
   mutate(
     # make some of these parameters biased, to re-estimate them in the model
-    p_detected_symptoms_biased = plogis(qlogis(p_detected_symptoms) - 0),
-    p_detected_screening_biased = plogis(qlogis(p_detected_screening) - 0)
+    p_detected_symptoms_biased = plogis(qlogis(p_detected_symptoms) - 1),
+    p_detected_screening_biased = plogis(qlogis(p_detected_screening) - 1)
   ) %>%
   select(
     date,
@@ -120,11 +120,14 @@ distribution(observed_reason_counts) <- multinomial(
   prob = reason_test_fraction
 )
 
-
 # define and fit model
-m <- model(kernel_sd_contact, kernel_sd_symp_screen, kernel_lengthscale_contact, kernel_lengthscale_symp_screen)
+m <- model(
+  kernel_sd_contact,
+  kernel_sd_symp_screen,
+  kernel_lengthscale_contact,
+  kernel_lengthscale_symp_screen
+)
 draws <- mcmc(m)
-
 
 plot(draws)
 coda::gelman.diag(
