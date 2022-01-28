@@ -3,33 +3,21 @@
 #' .. content for \details{} ..
 #'
 #' @title
-#' @param contact_fraction
-#' @param contact_test_prob
-#' @param symptomatic_fraction
-#' @param symptomatic_test_prob
-#' @param screenable_fraction
-#' @param screening_test_prob
+#' @param p_detected_contact
+#' @param p_detected_symptoms
+#' @param p_detected_screening
 #' @return
 #' @author Nick Golding
 #' @export
 # calculate expected ascertainment and reason for test fractions from R objects
 # or greta arrays for key parameters
 calculate_expected_fractions <- function(
-  contact_fraction,
-  contact_test_prob,
-  symptomatic_fraction,
-  symptomatic_test_prob,
-  screenable_fraction,
-  screening_test_prob
+  p_detected_contact,
+  p_detected_symptoms,
+  p_detected_screening
 ) {
-  
-  # need to be a known contact and seek a test
-  p_detected_contact <- contact_fraction * contact_test_prob
-  # need to be symptomatic and seek a test
-  p_detected_symptoms <- symptomatic_fraction * symptomatic_test_prob
-  # need to be in the fraction of people screened, and test positive is screened whilst positive
-  p_detected_screening <- screenable_fraction * screening_test_prob
-  
+
+  # pre-calculate complements
   p_detected_not_contact <- 1 - p_detected_contact
   p_detected_not_symptoms <- 1 - p_detected_symptoms
   p_detected_not_screening <- 1 - p_detected_screening
