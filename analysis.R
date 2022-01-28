@@ -50,7 +50,7 @@ params_data <- params_all %>%
   select(
     -p_detected_contact,
     -p_detected_symptoms,
-    # -p_detected_screening
+    -p_detected_screening
   )
 
 # define the contact fraction as an unknown variable - logit model on date
@@ -71,7 +71,7 @@ kernel <- bias(1) + mat52(lengthscales = kernel_lengthscale, variance = kernel_v
 logit_p_detected_contact <- gp(date_num, kernel = kernel)
 p_detected_contact <- ilogit(logit_p_detected_contact)
 
-# define a logit-gp over date forprobability of detection via symptomatic
+# define a logit-gp over date for probability of detection via symptomatic
 # testing, using a biased estimate as the prior mean on the logit scale
 
 # the temporally-varying bias and error term
@@ -83,10 +83,21 @@ logit_p_detected_symptoms <- logit_p_detected_symptoms_prior + logit_p_detected_
 p_detected_symptoms <- ilogit(logit_p_detected_symptoms)
 
 
+# define a logit-gp over date for probability of detection via screening
+# using a biased estimate as the prior mean on the logit scale
+
+# the temporally-varying bias and error term
+logit_p_detected_screening_error <- gp(date_num, kernel = kernel)
+# the prior mean (transform estimate to logit scale)
+logit_p_detected_screening_prior <- qlogis(params_data$p_detected_screening_biased)
+# combine these to get the logit estimate, and transform to probability scale
+logit_p_detected_screening <- logit_p_detected_screening_prior + logit_p_detected_screening_error
+p_detected_screening <- ilogit(logit_p_detected_screening)
+
 expected_fractions <- calculate_expected_fractions(
   p_detected_contact = p_detected_contact,
   p_detected_symptoms = p_detected_symptoms,
-  p_detected_screening = params_data$p_detected_screening
+  p_detected_screening = p_detected_screening
 )
 
 ascertainment <- expected_fractions$ascertainment
@@ -121,6 +132,7 @@ coda::gelman.diag(
 gp_latent_draws <- calculate(
   logit_p_detected_contact,
   logit_p_detected_symptoms_error,
+  logit_p_detected_screening_error,
   values = draws
 )
 coda::gelman.diag(
@@ -140,10 +152,14 @@ logit_p_detected_symptoms_error_predict <- project(logit_p_detected_symptoms_err
 logit_p_detected_symptoms_predict <- qlogis(params_all$p_detected_symptoms_biased) + logit_p_detected_symptoms_error_predict
 p_detected_symptoms_predict <- ilogit(logit_p_detected_symptoms_predict)
 
+logit_p_detected_screening_error_predict <- project(logit_p_detected_screening_error, date_num_predict)
+logit_p_detected_screening_predict <- qlogis(params_all$p_detected_screening_biased) + logit_p_detected_screening_error_predict
+p_detected_screening_predict <- ilogit(logit_p_detected_screening_predict)
+
 expected_fractions_predict <- calculate_expected_fractions(
   p_detected_contact = p_detected_contact_predict,
   p_detected_symptoms = p_detected_symptoms_predict,
-  p_detected_screening = params_all$p_detected_screening
+  p_detected_screening = p_detected_screening_predict
 )
 
 ascertainment_predict <- expected_fractions_predict$ascertainment
@@ -152,6 +168,7 @@ ascertainment_predict <- expected_fractions_predict$ascertainment
 predict_sims <- calculate(
   p_detected_contact_predict,
   p_detected_symptoms_predict,
+  p_detected_screening_predict,
   ascertainment_predict,
   values = draws,
   nsim = 1000
@@ -162,6 +179,9 @@ p_detected_contact_predict_cis <- apply(predict_sims$p_detected_contact_predict,
 
 p_detected_symptoms_predict_mean <- colMeans(predict_sims$p_detected_symptoms_predict)[, 1]
 p_detected_symptoms_predict_cis <- apply(predict_sims$p_detected_symptoms_predict, 2, quantile, c(0.025, 0.975))
+
+p_detected_screening_predict_mean <- colMeans(predict_sims$p_detected_screening_predict)[, 1]
+p_detected_screening_predict_cis <- apply(predict_sims$p_detected_screening_predict, 2, quantile, c(0.025, 0.975))
 
 ascertainment_predict_mean <- colMeans(predict_sims$ascertainment_predict)[, 1]
 ascertainment_predict_cis <- apply(predict_sims$ascertainment_predict, 2, quantile, c(0.025, 0.975))
@@ -177,7 +197,10 @@ predictions <- tibble(
     p_detected_symptoms = p_detected_symptoms_predict_mean,
     p_detected_symptoms_low = p_detected_symptoms_predict_cis[1, ],
     p_detected_symptoms_high = p_detected_symptoms_predict_cis[2, ],
-  )
+    p_detected_screening = p_detected_screening_predict_mean,
+    p_detected_screening_low = p_detected_screening_predict_cis[1, ],
+    p_detected_screening_high = p_detected_screening_predict_cis[2, ],
+)
 
 p_detected_contact_plot <- predictions %>%
   ggplot(
@@ -240,6 +263,40 @@ p_detected_symptoms_plot <- predictions %>%
     "p(detected symptoms) estimate"
   )
 
+p_detected_screening_plot <- predictions %>%
+  ggplot(
+    aes(
+      x = date,
+      y = p_detected_screening
+    )
+  ) +
+  geom_line(
+    data = params_all,
+    linetype = 2
+  ) +
+  geom_line(
+    aes(
+      y = p_detected_screening_biased
+    ),
+    data = params_all,
+    col = "red"
+  ) +
+  geom_ribbon(
+    aes(
+      ymax = p_detected_screening_high,
+      ymin = p_detected_screening_low
+    ),
+    alpha = 0.3
+  ) +
+  geom_line() +
+  theme_minimal() +
+  coord_cartesian(
+    ylim = c(0, 1)
+  ) +
+  ggtitle(
+    "p(detected screening) estimate"
+  )
+
 ascertainment_plot <- predictions %>%
   ggplot(
     aes(
@@ -267,7 +324,7 @@ ascertainment_plot <- predictions %>%
     "Ascertainment estimate"
   )
 
-fit_plot <- ascertainment_plot + p_detected_contact_plot + p_detected_symptoms_plot
+fit_plot <- ascertainment_plot + p_detected_contact_plot + p_detected_symptoms_plot + p_detected_screening_plot
 
 ggsave(
   "figures/estimate_greta.png",
