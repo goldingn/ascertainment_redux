@@ -15,8 +15,8 @@ sim_parameters <- function() {
     date = Sys.Date() + date_num
   ) %>%
     mutate(
-      contact_fraction = random_trend(date_num, 0.9, variance = 2),
-      contact_test_prob = random_trend(date_num, 0.95),
+      contact_fraction = random_trend(date_num, 0.3, variance = 2),
+      contact_test_prob = random_trend(date_num, 0.9),
       symptomatic_fraction = random_trend(date_num, 0.5),
       symptomatic_test_prob = random_trend(date_num, 0.8, variance = 1),
       screenable_fraction = random_trend(date_num, 0.1),
