@@ -28,7 +28,7 @@ sim_reason_for_test_survey <- function(data,
       names_prefix = "fraction_tested_"
     ) %>%
     group_by(
-      sim_days
+      date_num
     ) %>%
     mutate(
       count = rmultinom(

@@ -18,11 +18,7 @@ reason_test_count_data <- sim_reason_for_test_survey(
 )
 
 # extract required parameters (true and biased) for the full timeseries
-params_all <- data %>%
-  pivot_wider(
-    names_from = parameter,
-    values_from = value
-  ) %>%
+params_full <- abm_data %>%
   # compute detection probabilities via each pathway from these parameters
   mutate(
     # need to be a known contact and seek a test
@@ -30,7 +26,7 @@ params_all <- data %>%
     # need to be symptomatic and seek a test
     p_detected_symptoms = symptomatic_fraction * symptomatic_test_prob,
     # need to be in the fraction of people screened, and test positive is screened whilst positive
-    p_detected_screening = screenable_fraction * screening_test_prob
+    p_detected_screening = screening_fraction * screening_test_prob
   ) %>%
   mutate(
     # make some of these parameters biased, to re-estimate them in the model
@@ -38,15 +34,15 @@ params_all <- data %>%
     p_detected_screening_biased = plogis(qlogis(p_detected_screening) - 1)
   ) %>%
   select(
-    date,
+    date_num,
     starts_with("p_")
   )
 
 # get parameters for this subset of data (throw out dates for which we don't
 # have reason for test data, and parameter time series we wouldn't observe)
-params_data <- params_all %>%
+params_data <- params_full %>%
   filter(
-    date %in% reason_test_count_data$date
+    date_num %in% reason_test_count_data$date_num
   ) %>%
   select(
     -p_detected_contact,
@@ -62,7 +58,7 @@ params_data <- params_all %>%
 # date_scaling <- max(date_num)
 # date_num <- date_num / date_scaling
 
-date_num <- abm_data$date_num
+date_num <- params_data$date_num
 
 # Gaussian process hyperparameters - reuse these for several GPs
 kernel_sd_contact <- normal(0, 1, truncation = c(0, Inf))
@@ -85,7 +81,7 @@ p_detected_contact <- ilogit(logit_p_detected_contact)
 # the temporally-varying bias and error term
 logit_p_detected_symptoms_error <- gp(date_num, kernel = kernel_symp_screen)
 # the prior mean (transform estimate to logit scale)
-logit_p_detected_symptoms_prior <- qlogis(params_data$p_detected_symptoms_biased)
+logit_p_detected_symptoms_prior <- qlogis(pmax(params_data$p_detected_symptoms_biased, 0.01))
 # combine these to get the logit estimate, and transform to probability scale
 logit_p_detected_symptoms <- logit_p_detected_symptoms_prior + logit_p_detected_symptoms_error
 p_detected_symptoms <- ilogit(logit_p_detected_symptoms)
@@ -97,7 +93,7 @@ p_detected_symptoms <- ilogit(logit_p_detected_symptoms)
 # the temporally-varying bias and error term
 logit_p_detected_screening_error <- gp(date_num, kernel = kernel_symp_screen)
 # the prior mean (transform estimate to logit scale)
-logit_p_detected_screening_prior <- qlogis(params_data$p_detected_screening_biased)
+logit_p_detected_screening_prior <- qlogis(pmin(params_data$p_detected_screening_biased, 0.99))
 # combine these to get the logit estimate, and transform to probability scale
 logit_p_detected_screening <- logit_p_detected_screening_prior + logit_p_detected_screening_error
 p_detected_screening <- ilogit(logit_p_detected_screening)
@@ -114,7 +110,7 @@ reason_test_fraction <- expected_fractions$reason_test_fraction
 # pull out the modelled reason for test fractions corresponding to the data
 observed_reason_counts <- reason_test_count_data %>%
   select(
-    -date
+    -date_num
   ) %>%
   as.matrix()
 
@@ -130,6 +126,7 @@ m <- model(
   kernel_lengthscale_contact,
   kernel_lengthscale_symp_screen
 )
+
 draws <- mcmc(m)
 
 plot(draws)
@@ -154,17 +151,17 @@ coda::gelman.diag(
 
 
 # use these to predict contact_fraction, symptomatic_test_prob, and ascertainment over time
-date_num_predict <- as.numeric(params_all$date - start_date) / date_scaling
+date_num_predict <- params_full$date_num
 
 logit_p_detected_contact_predict <- project(logit_p_detected_contact, date_num_predict)
 p_detected_contact_predict <- ilogit(logit_p_detected_contact_predict)
 
 logit_p_detected_symptoms_error_predict <- project(logit_p_detected_symptoms_error, date_num_predict)
-logit_p_detected_symptoms_predict <- qlogis(params_all$p_detected_symptoms_biased) + logit_p_detected_symptoms_error_predict
+logit_p_detected_symptoms_predict <- qlogis(pmax(params_full$p_detected_symptoms_biased, 0.01)) + logit_p_detected_symptoms_error_predict
 p_detected_symptoms_predict <- ilogit(logit_p_detected_symptoms_predict)
 
 logit_p_detected_screening_error_predict <- project(logit_p_detected_screening_error, date_num_predict)
-logit_p_detected_screening_predict <- qlogis(params_all$p_detected_screening_biased) + logit_p_detected_screening_error_predict
+logit_p_detected_screening_predict <- qlogis(pmin(params_full$p_detected_screening_biased, 0.99)) + logit_p_detected_screening_error_predict
 p_detected_screening_predict <- ilogit(logit_p_detected_screening_predict)
 
 expected_fractions_predict <- calculate_expected_fractions(
@@ -198,7 +195,7 @@ ascertainment_predict_mean <- colMeans(predict_sims$ascertainment_predict)[, 1]
 ascertainment_predict_cis <- apply(predict_sims$ascertainment_predict, 2, quantile, c(0.025, 0.975))
 
 predictions <- tibble(
-    date = params_all$date,
+    date = params_full$date_num,
     ascertainment = ascertainment_predict_mean,
     ascertainment_low = ascertainment_predict_cis[1, ],
     ascertainment_high = ascertainment_predict_cis[2, ],
@@ -216,12 +213,12 @@ predictions <- tibble(
 p_detected_contact_plot <- predictions %>%
   ggplot(
     aes(
-      x = date,
+      x = date_num_predict,
       y = p_detected_contact
     )
   ) +
   geom_line(
-    data = params_all,
+    data = params_full,
     linetype = 2
   ) +
   geom_ribbon(
@@ -243,19 +240,19 @@ p_detected_contact_plot <- predictions %>%
 p_detected_symptoms_plot <- predictions %>%
   ggplot(
     aes(
-      x = date,
+      x = date_num_predict,
       y = p_detected_symptoms
     )
   ) +
   geom_line(
-    data = params_all,
+    data = params_full,
     linetype = 2
   ) +
   geom_line(
     aes(
       y = p_detected_symptoms_biased
     ),
-    data = params_all,
+    data = params_full,
     col = "red"
   ) +
   geom_ribbon(
@@ -277,19 +274,19 @@ p_detected_symptoms_plot <- predictions %>%
 p_detected_screening_plot <- predictions %>%
   ggplot(
     aes(
-      x = date,
+      x = date_num_predict,
       y = p_detected_screening
     )
   ) +
   geom_line(
-    data = params_all,
+    data = params_full,
     linetype = 2
   ) +
   geom_line(
     aes(
       y = p_detected_screening_biased
     ),
-    data = params_all,
+    data = params_full,
     col = "red"
   ) +
   geom_ribbon(
@@ -311,7 +308,7 @@ p_detected_screening_plot <- predictions %>%
 ascertainment_plot <- predictions %>%
   ggplot(
     aes(
-      x = date,
+      x = date_num_predict,
       y = ascertainment
     )
   ) +

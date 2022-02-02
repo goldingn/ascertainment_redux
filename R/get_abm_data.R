@@ -7,7 +7,7 @@
 #' @return
 #' @author dhduncan
 #' @export
-get_data <- function() {
+get_abm_data <- function() {
 
   path_to_file = "~/Documents/covid/simulate-infections/outputs/sim_output.csv"
   
@@ -25,6 +25,6 @@ get_data <- function() {
            symptomatic_test_prob = random_trend(sim_days, 0.8, variance = 1),
            screening_test_prob = random_trend(sim_days, 1 - ((1 - 5/7) ^ 34))) %>%
     relocate(date_num) %>% 
-    select(-c(infection_day, sim_days))
+    select(-c(infection_day))
     
 }
