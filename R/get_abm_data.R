@@ -9,7 +9,7 @@
 #' @export
 get_abm_data <- function() {
 
-  path_to_file = "~/Documents/covid/simulate-infections/outputs/sim_output.csv"
+  path_to_file = "data/sim_output.csv"
   
   # keep this simple for now, it might be good to get this up to replication stage, run the model on a sequence of simulations, they could have varying parameters.
   
