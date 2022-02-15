@@ -15,9 +15,7 @@ calculate_ascertainment_abm_data <- function(data) {
     group_by(date_num) %>% 
     mutate(undetected = count_tested_undetected) %>%  # stoopid name anyway)
     summarise(
-      ascertainment = 1 - (undetected / sum(count_tested_contact,
-                                            count_tested_symptomatic,
-                                            count_tested_screening)))
+      ascertainment = 1 - (undetected / (undetected + count_tested_contact +                     count_tested_symptomatic +                  count_tested_screening)))
     # ) %>%
     # # filter down to what we want
     # select(

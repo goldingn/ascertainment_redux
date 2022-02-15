@@ -219,7 +219,7 @@ p_detected_contact_plot <- predictions %>%
       y = p_detected_contact
     )
   ) +
-  geom_hline(yintercept = 0.95, linetype = 2) +
+  geom_hline(yintercept = 0.5, linetype = 2) +
 # geom_line()
   #   data = params_full,
   #   linetype = 2
@@ -338,7 +338,7 @@ ascertainment_plot <- predictions %>%
     "Ascertainment estimate"
   )
 
-fit_plot <- ascertainment_plot + p_detected_contact_plot + p_detected_symptoms_plot + p_detected_screening_plot
+(fit_plot <- ascertainment_plot + p_detected_contact_plot + p_detected_symptoms_plot + p_detected_screening_plot)
 
 ggsave(
   "figures/estimate_greta.png",
