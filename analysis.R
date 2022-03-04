@@ -32,9 +32,10 @@ params_all <- data %>%
     p_detected_screening = screenable_fraction * screening_test_prob
   ) %>%
   mutate(
+    logit_bias = -0,
     # make some of these parameters biased, to re-estimate them in the model
-    p_detected_symptoms_biased = plogis(qlogis(p_detected_symptoms) - 1),
-    p_detected_screening_biased = plogis(qlogis(p_detected_screening) - 1)
+    p_detected_symptoms_biased = plogis(qlogis(p_detected_symptoms) + logit_bias),
+    p_detected_screening_biased = plogis(qlogis(p_detected_screening) + logit_bias)
   ) %>%
   select(
     date,
