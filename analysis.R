@@ -1,7 +1,7 @@
 # a demo analysis in greta
 
 # simulating from the ascertainment model in pure R code (not yet greta)
-set.seed(2)
+set.seed(1)
 
 # simulate fake dataset timeseries (including those we wouldn't observe)
 data <- sim_parameters()
@@ -15,6 +15,44 @@ reason_test_count_data <- sim_reason_for_test_data(
   sample_size = 2000,
   days_between_surveys = 7
 )
+
+reason_test_count_data %>%
+  pivot_longer(
+    cols = starts_with("count_tested"),
+    names_to = "type",
+    values_to = "count",
+    names_prefix = "count_tested_"
+  ) %>%
+  group_by(
+    date
+  ) %>%
+  mutate(
+    proportion = count / sum(count)
+  ) %>%
+  select(-count) %>%
+  ggplot(
+    aes(
+      x = date,
+      y = proportion
+    )
+  ) +
+  ylim(0, 1) +
+  geom_line() +
+  facet_wrap(~type) +
+  geom_hline(
+    aes(
+      yintercept = 0.47
+    ),
+    linetype = 2
+  ) +
+  geom_hline(
+    aes(
+      yintercept = 0.06
+    ),
+    linetype = 2
+  ) +
+  theme_minimal()
+
 
 # extract required parameters (true and biased) for the full timeseries
 params_all <- data %>%
@@ -32,10 +70,10 @@ params_all <- data %>%
     p_detected_screening = screenable_fraction * screening_test_prob
   ) %>%
   mutate(
-    logit_bias = -0,
+    bias = 0.2,
     # make some of these parameters biased, to re-estimate them in the model
-    p_detected_symptoms_biased = plogis(qlogis(p_detected_symptoms) + logit_bias),
-    p_detected_screening_biased = plogis(qlogis(p_detected_screening) + logit_bias)
+    p_detected_symptoms_biased = p_detected_symptoms * (1 + bias),
+    p_detected_screening_biased = p_detected_screening * (1 + bias)
   ) %>%
   select(
     date,
@@ -128,7 +166,7 @@ m <- model(
   kernel_lengthscale_contact,
   kernel_lengthscale_symp_screen
 )
-draws <- mcmc(m)
+draws <- mcmc(m, one_by_one = TRUE)
 
 plot(draws)
 coda::gelman.diag(
@@ -184,22 +222,24 @@ predict_sims <- calculate(
 )
 
 p_detected_contact_predict_mean <- colMeans(predict_sims$p_detected_contact_predict)[, 1]
-p_detected_contact_predict_cis <- apply(predict_sims$p_detected_contact_predict, 2, quantile, c(0.025, 0.975))
+p_detected_contact_predict_cis <- apply(predict_sims$p_detected_contact_predict, 2, quantile, c(0.025, 0.975, 0.25, 0.75))
 
 p_detected_symptoms_predict_mean <- colMeans(predict_sims$p_detected_symptoms_predict)[, 1]
-p_detected_symptoms_predict_cis <- apply(predict_sims$p_detected_symptoms_predict, 2, quantile, c(0.025, 0.975))
+p_detected_symptoms_predict_cis <- apply(predict_sims$p_detected_symptoms_predict, 2, quantile, c(0.025, 0.975, 0.25, 0.75))
 
 p_detected_screening_predict_mean <- colMeans(predict_sims$p_detected_screening_predict)[, 1]
-p_detected_screening_predict_cis <- apply(predict_sims$p_detected_screening_predict, 2, quantile, c(0.025, 0.975))
+p_detected_screening_predict_cis <- apply(predict_sims$p_detected_screening_predict, 2, quantile, c(0.025, 0.975, 0.25, 0.75))
 
 ascertainment_predict_mean <- colMeans(predict_sims$ascertainment_predict)[, 1]
-ascertainment_predict_cis <- apply(predict_sims$ascertainment_predict, 2, quantile, c(0.025, 0.975))
+ascertainment_predict_cis <- apply(predict_sims$ascertainment_predict, 2, quantile, c(0.025, 0.975, 0.25, 0.75))
 
 predictions <- tibble(
     date = params_all$date,
     ascertainment = ascertainment_predict_mean,
     ascertainment_low = ascertainment_predict_cis[1, ],
     ascertainment_high = ascertainment_predict_cis[2, ],
+    ascertainment_low_50 = ascertainment_predict_cis[3, ],
+    ascertainment_high_50 = ascertainment_predict_cis[4, ],
     p_detected_contact = p_detected_contact_predict_mean,
     p_detected_contact_low = p_detected_contact_predict_cis[1, ],
     p_detected_contact_high = p_detected_contact_predict_cis[2, ],
@@ -324,6 +364,13 @@ ascertainment_plot <- predictions %>%
     ),
     alpha = 0.3
   ) +
+  geom_ribbon(
+    aes(
+      ymax = ascertainment_high_50,
+      ymin = ascertainment_low_50
+    ),
+    alpha = 0.3
+  ) +
   geom_line() +
   theme_minimal() +
   coord_cartesian(
@@ -342,3 +389,7 @@ ggsave(
   width = 12,
   height = 10
 )
+
+fit_plot
+
+

@@ -15,10 +15,10 @@ sim_parameters <- function() {
     date = Sys.Date() + date_num
   ) %>%
     mutate(
-      contact_fraction = random_trend(date_num, 0.3, variance = 2),
-      contact_test_prob = random_trend(date_num, 0.9),
+      contact_fraction = random_trend(date_num, 0.5, variance = 0.5),
+      contact_test_prob = random_trend(date_num, 0.95),
       symptomatic_fraction = random_trend(date_num, 0.5),
-      symptomatic_test_prob = random_trend(date_num, 0.8, variance = 1),
+      symptomatic_test_prob = random_trend(date_num, 0.8, variance = 0.5),
       screenable_fraction = random_trend(date_num, 0.1),
       # tested 5 random days per week, 3 days of RAT positivity
       screening_test_prob = random_trend(date_num, 1 - ((1 - 5/7) ^ 34))
